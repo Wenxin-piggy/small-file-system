@@ -53,6 +53,19 @@ int my_disk_read_block(unsigned int block_num, char* buf){
         printf("open disk error\n");
     }
 }
+void temp_test(){
+   // printf("get in test\n");
+   my_disk_read_block(1,buf);
+    struct inode * test = (struct inode *)buf;
+    printf("inode test :inode size = %d\n",test[0].size);
+    printf("inode test :inode file_type = %d\n",test[0].file_type);
+    printf("inode test :inode link = %d\n",test[0].link);
+    for(int i = 0;i < 6;i ++){
+        printf("inode test : inode block_point[%d] = %d\n",i,test[0].block_point[i]);
+    }
+    return ;
+
+}
 int my_disk_write_block(unsigned int block_num, char* buf){
     unsigned int block_num1 = 2*block_num;
     unsigned int block_num2 = block_num1 + 1;
@@ -66,7 +79,6 @@ int my_disk_write_block(unsigned int block_num, char* buf){
         printf("write disk error\n");
         exit(-1);
     }
-
 }
 void create_new_disk(sp_block *temp){
 
@@ -91,6 +103,7 @@ void create_new_disk(sp_block *temp){
     my_disk_write_block(0,(char *)temp);
     my_disk_write_block(1,(char*)& root);
     printf("Formating finished,good luck and have fun!\n");
+
 }
 void init(){
     if(open_disk() == 0){//打开文件无异常
@@ -159,19 +172,28 @@ int get_inode_num(char *name,int inode){
     */
     //要先将这个标号的Inode从磁盘中取出来
     //因为：每个磁盘块存了32个inode的信息
+    printf("get inode num\n");
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
-    unsigned int inode_id = inode % 32;
+    unsigned int inode_id = inode % 32 - 1;//因为是从0开始计算的
     printf("inode_id_in_disk = %d\n",inode_id_in_disk);
     my_disk_read_block(inode_id_in_disk,buf);
+    
     struct inode * myinode = (struct inode *)buf;
+    printf("111inode test :inode size = %d\n",myinode[0].size);
+    printf("inode test :inode file_type = %d\n",myinode[0].file_type);
+    printf("inode test :inode link = %d\n",myinode[0].link);
+    for(int i = 0;i < 6;i ++){
+        printf("inode test : inode block_point[%d] = %d\n",i,myinode[0].block_point[i]);
+    }
+    printf("BLOCK_IN_NODE = %d",BLOCK_IN_INODE);
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
-        printf("myinode[%d].block_point[%d] = %d\n",inode_id,i,myinode[inode_id].block_point[i]);
         if(myinode[inode_id].block_point[i] == 0){
             break;
         }
         int block_id_in_disk = myinode[inode_id].block_point[i] + DATA_BLOCK_BASE;
-        
+        printf("may be is here\n");
         my_disk_read_block(block_id_in_disk,buf);
+        printf("may be is here\n");
         struct dir_item * block_list = (struct dir_item *)buf;
         unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
         printf("block_num = %d\n",block_num);
@@ -196,10 +218,13 @@ void work(){
     scanf("%s",&cmd);
     while(strcmp(cmd,"shutdown") != 0){
         if(strcmp("mkdir",cmd) == 0){
-            is_mkdir();  
+            is_mkdir(); 
+            return ;
+             
         }
     }
 }
+
 int main(){
     init();
     work();

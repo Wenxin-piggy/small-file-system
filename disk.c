@@ -54,15 +54,19 @@ int disk_read_block(unsigned int block_num, char* buf)
 int disk_write_block(unsigned int block_num, char* buf)
 {
         if(disk == 0){
+                printf("error here1\n");
                 return -1;
         }
         if(block_num * DEVICE_BLOCK_SIZE >= get_disk_size()){
+                printf("error here2\n");
                 return -1;
         }
         if(fseek(disk, block_num * DEVICE_BLOCK_SIZE, SEEK_SET)){
+                printf("error here3\n");
                 return -1;
         }
         if(fwrite(buf,DEVICE_BLOCK_SIZE,1,disk) != 1){
+                printf("error here4\n");
                 return -1;
         }
         return 0;
