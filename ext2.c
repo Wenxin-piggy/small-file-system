@@ -80,6 +80,7 @@ int my_disk_write_block(unsigned int block_num, char* buf){
     }
 }
 void create_new_disk(sp_block *temp){
+    printf("get in creat_new_disk\n");
     //创建一个新的磁盘
     temp -> magic_num = MAGIC_NUM;
     temp -> free_block_count = 4096;
@@ -118,7 +119,7 @@ void init(){
                 printf("Unknow file system found\n");
                 printf("Format disk and rebuild a sucking file system?(y/n)\n");
                 char ans;
-                scanf("%c\n",&ans);
+                scanf("%c",&ans);
                 if(ans == 'y'){
                     create_new_disk(temp);    
                 }
@@ -167,7 +168,9 @@ int my_address_split(char * address_cmd){
             address_list[num][temp ++] = address_cmd[i];
         }
     }
-    num ++;
+    if(length > 1){
+        num ++;
+    }
     return num;
 }
 unsigned int get_inode_num(char *name,int inode){
@@ -350,12 +353,19 @@ void is_mkdir(){
 
 }
 void get_dir_from_inode(unsigned int id_block){
-
-    
+    my_disk_read_block((DATA_BLOCK_BASE + id_block),buf);
+    struct dir_item * dir_list = (struct dir_item *)buf;
+    for(int i = 0;i < 8;i ++){
+        if(dir_list[i].valid == 1){
+            printf("%s\n",dir_list[i].name);
+        }
+    }
+    return ;
 }
-int show_dir(unsigned int inode_id){
-    unsigned int inode_id_in_disk = inode_id/32 + INODE_BLOCK_BASE;
-    unsigned int inode_id = inode_id % 32;//因为是从0开始计算的
+int show_dir(unsigned int inode){
+    unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
+    unsigned int inode_id = inode % 32;//因为是从0开始计算的
+
     my_disk_read_block(inode_id_in_disk,buf);
     struct inode * myinode = (struct inode *)buf;
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
@@ -366,13 +376,15 @@ int show_dir(unsigned int inode_id){
             get_dir_from_inode(myinode[inode_id].block_point[i]);
         }
     }
-
+    return;
 }
 void is_ls(){
     char address_temp[1024];
     char dir_name_in_inode[1024];
     scanf("%s",&address_temp);
+    memset(address_list,0,sizeof(address_list));
     int num = my_address_split(address_temp);
+    printf("num = %d\n",num);
     unsigned int inode_id = 0;//默认第1个inode是根目录
     for(int i = 1;i < num;i ++){
         strcpy(dir_name_in_inode,address_list[i]);
@@ -390,17 +402,17 @@ void is_ls(){
 }
 void work(){
     char cmd[1024];
-    printf("==>");
+    printf("==> ");
     scanf("%s",&cmd);
     while(strcmp(cmd,"shutdown") != 0){
         if(strcmp("mkdir",cmd) == 0){
             is_mkdir(); 
-            return ;
         }
         else if(strcmp("ls",cmd) == 0){
             is_ls();
-            return ; 
         }
+        printf("==> ");
+        scanf("%s",&cmd);
     }
 }
 
