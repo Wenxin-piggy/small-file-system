@@ -69,7 +69,6 @@ void temp_test(){
 int my_disk_write_block(unsigned int block_num, char* buf){
     unsigned int block_num1 = 2*block_num;
     unsigned int block_num2 = block_num1 + 1;
-    struct inode * test = (struct inode *)buf;
     if(disk_write_block(block_num1,buf) == 0){
         if(disk_write_block(block_num2,buf + 512) == 0){
             return 1;
@@ -81,7 +80,6 @@ int my_disk_write_block(unsigned int block_num, char* buf){
     }
 }
 void create_new_disk(sp_block *temp){
-
     //创建一个新的磁盘
     temp -> magic_num = MAGIC_NUM;
     temp -> free_block_count = 4096;
@@ -95,11 +93,17 @@ void create_new_disk(sp_block *temp){
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
         root[0].block_point[i] = 0;
     }
+  
     //修改超级块的内容
     temp -> free_block_count = temp -> free_block_count - 1;
     temp -> free_inode_count = temp -> free_inode_count - 1;
     temp -> inode_map[0] = (1 << 31) | (temp -> inode_map[0]);
-    
+    for(int i = 0;i < 128;i ++){
+        temp -> block_map[i] = 0;
+    }
+    for(int i = 1;i < 32;i ++){
+        temp -> inode_map[i] = 0;
+    }
     my_disk_write_block(0,(char *)temp);
     my_disk_write_block(1,(char*)& root);
     printf("Formating finished,good luck and have fun!\n");
@@ -166,51 +170,223 @@ int my_address_split(char * address_cmd){
     num ++;
     return num;
 }
-int get_inode_num(char *name,int inode){
+unsigned int get_inode_num(char *name,int inode){
     /*函数用处：
         给出dir的inode,在其child中，找到孩子的name，返回name符合要求的Inode
     */
     //要先将这个标号的Inode从磁盘中取出来
     //因为：每个磁盘块存了32个inode的信息
-    printf("get inode num\n");
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
     unsigned int inode_id = inode % 32 - 1;//因为是从0开始计算的
-    printf("inode_id_in_disk = %d\n",inode_id_in_disk);
     my_disk_read_block(inode_id_in_disk,buf);
-    
     struct inode * myinode = (struct inode *)buf;
-    printf("111inode test :inode size = %d\n",myinode[0].size);
-    printf("inode test :inode file_type = %d\n",myinode[0].file_type);
-    printf("inode test :inode link = %d\n",myinode[0].link);
-    for(int i = 0;i < 6;i ++){
-        printf("inode test : inode block_point[%d] = %d\n",i,myinode[0].block_point[i]);
-    }
-    printf("BLOCK_IN_NODE = %d",BLOCK_IN_INODE);
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
         if(myinode[inode_id].block_point[i] == 0){
             break;
         }
         int block_id_in_disk = myinode[inode_id].block_point[i] + DATA_BLOCK_BASE;
-        printf("may be is here\n");
         my_disk_read_block(block_id_in_disk,buf);
-        printf("may be is here\n");
         struct dir_item * block_list = (struct dir_item *)buf;
         unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
-        printf("block_num = %d\n",block_num);
         for(int j = 0;j < block_num;j ++){
-            if(strcmp(name,block_list[j].name) == 0){
+            if((block_list[j].valid == 1)&&(strcmp(name,block_list[j].name) == 0)){
                 return block_list[j].inode_id;
             }
         }
     }
     return -1;
 }
+int get_invaild_position(unsigned int num){
+    int t = 0;
+    for(uint32_t mask = 0x80000000;mask;mask = mask >> 1){
+        if((num & mask) == 0){
+            return t;
+        }
+        t ++;
+    }
+    return -1;
+}
+unsigned int get_new_block_id(int size){
+    /*
+    返回一个没有用过的，全新的inode的id
+    */
+   //在超级块中查询
+   my_disk_read_block(0,buf);
+   sp_block *super_block_temp = (sp_block*)buf;
+   unsigned int ans = 0;
+   for(int i = 0;i < size;i ++){
+        if(size == 32)
+            ans = get_invaild_position(super_block_temp->inode_map[i]);
+        else if(size == 128)
+            ans = get_invaild_position(super_block_temp->block_map[i]);
+        if(ans >= 0)
+            return ans;
+    }
+    return -1;
+
+}
+void setmap(unsigned int id,int type){
+    /*
+    函数作用：修改超级块里头的标志位
+    type:1 data block 
+         2 inode block
+    */
+    my_disk_read_block(0,buf);
+    sp_block *super_block_temp = (sp_block*)buf;
+    super_block_temp -> block_map[id / 32] = (1 << (32 - 1 - id % 32)) | (super_block_temp -> block_map[id / 32]);
+    if(type == 1)
+        super_block_temp ->free_block_count -= 1;
+    else if(type == 2)
+        super_block_temp ->free_inode_count -= 1;
+    my_disk_write_block(0,(char *)&super_block_temp);
+}
+void init_new_data_block_for_use(unsigned int block_id){
+/*
+    函数作用：对于一个新的 data Block，对其进行初始化
+    1 将其里面以前的数据清空
+    2 将超级块里的标志位置1   
+*/
+    memset(buf,0,sizeof(buf));
+    my_disk_write_block((block_id + DATA_BLOCK_BASE),buf);
+    setmap(block_id,1);
+}
+void init_new_inode_block_for_use(unsigned int inode_id){
+    /*
+    函数作用：对于一个新的inode block,对其进行初始化
+    1 将里面的数据清空
+    2 将超级块里头的标志位置1
+    */
+    memset(buf,0,sizeof(buf));
+    my_disk_write_block((inode_id + INODE_BLOCK_BASE),buf);
+    setmap(inode_id,2);
+
+}
+int add_dir_data_block(unsigned int id_datablock,unsigned int id_inode,int type,char *name){
+    /*
+    1　将信息加到其父亲的data block中
+    2  id 在这个data block中，我要将信息加在哪儿
+    3　id_datablock　datablock 的id
+    4  id_inode  inode 的id
+    ５　type 类型 
+    */
+   my_disk_read_block((id_datablock + DATA_BLOCK_BASE),buf);
+   struct dir_item * dir_list_block = (struct dir_item *)buf;
+   for(int i = 0;i < 8;i ++){
+       if(dir_list_block[i].valid == 0){
+           //valid是０，可以用
+           dir_list_block[i].inode_id = id_inode;
+           dir_list_block[i].valid = 1;
+           dir_list_block[i].type = type;
+           strcpy(dir_list_block[i].name,name);
+           my_disk_read_block((id_datablock + DATA_BLOCK_BASE),(char *)dir_list_block);
+           return 1;
+       }
+   }
+   return -1;
+}
+
+int find_place_for_dir(unsigned int id_block){
+    /*
+    在block里头找一块地
+    */
+    my_disk_read_block(id_block,buf);
+    struct dir_item * dir_list_block = (struct dir_item *)buf;
+    for(int i = 0;i < 8;i ++){
+        if(dir_list_block[i].valid == 0){
+            return i;
+        }
+    }
+    return -1;
+}
+int add_dir_into_inode(char *name,int inode,char *dir_name){
+    /*
+    inode 父目录的inode号
+    name  要新创的文件夹的名字
+    */
+    unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
+    unsigned int inode_id = inode % 32;//因为是从0开始计算的
+    my_disk_read_block(inode_id_in_disk,buf);
+    struct inode * myinode = (struct inode *)buf;
+    unsigned int new_dir_indoe_id = get_new_block_id(32);//得到新的inode
+    init_new_inode_block_for_use(new_dir_indoe_id);
+    for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        //如果这个文件夹底下是空的,那么其block_num就会为0，那就可以直接为他创一个新的space
+        if(myinode[inode_id].block_point[i] == 0){
+            unsigned int new_block_id = get_new_block_id(128);
+            init_new_data_block_for_use(new_block_id);    
+            add_dir_data_block(new_block_id,new_dir_indoe_id,DIR_TYPE,dir_name);
+            return 1;
+        }
+        else{
+            //不空，来吧宝贝来找位置
+            int pos = find_place_for_dir(myinode[inode_id].block_point[i]);
+            if(pos >= 0){
+                add_dir_data_block(myinode[inode_id].block_point[i],new_dir_indoe_id,DIR_TYPE,dir_name);
+                return 1;
+            }
+        }
+    }
+
+}
 void is_mkdir(){
     char address_temp[1024];
+    char dir_name_in_inode[1024];
     scanf("%s",&address_temp);
-    printf("address repeat:%s\n",address_temp);
     int num = my_address_split(address_temp);
-    int t = get_inode_num("/",1);
+    int inode_id = 0;//默认第1个inode是根目录
+    for(int i = 1;i < num - 1;i ++){
+        //默认第一个是/，然后从第二个开始遍历,而且最后一个是要创建的，所以不用遍历
+        strcpy(dir_name_in_inode,address_list[i]);
+        inode_id = get_inode_num(dir_name_in_inode,inode_id);
+        if(inode_id == -1){
+            //该找到的inode_id 没有找到
+            printf("Can not create %s:No such file or dictionary\n",address_temp);
+            return;
+        }
+    }
+    if(add_dir_into_inode(address_list[num - 1],inode_id,&(address_list[num - 1])) == -1){
+        printf("Can not create %s:space is not enough\n");
+    }
+
+}
+void get_dir_from_inode(unsigned int id_block){
+
+    
+}
+int show_dir(unsigned int inode_id){
+    unsigned int inode_id_in_disk = inode_id/32 + INODE_BLOCK_BASE;
+    unsigned int inode_id = inode_id % 32;//因为是从0开始计算的
+    my_disk_read_block(inode_id_in_disk,buf);
+    struct inode * myinode = (struct inode *)buf;
+    for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        if(myinode[inode_id].block_point[i] == 0){
+            return 1;
+        }
+        else{
+            get_dir_from_inode(myinode[inode_id].block_point[i]);
+        }
+    }
+
+}
+void is_ls(){
+    char address_temp[1024];
+    char dir_name_in_inode[1024];
+    scanf("%s",&address_temp);
+    int num = my_address_split(address_temp);
+    unsigned int inode_id = 0;//默认第1个inode是根目录
+    for(int i = 1;i < num;i ++){
+        strcpy(dir_name_in_inode,address_list[i]);
+        inode_id = get_inode_num(dir_name_in_inode,inode_id);
+        if(inode_id == -1){
+            //该找到的inode_id 没有找到
+            printf("No such file or dictionary\n",address_temp);
+            return;
+        }
+    }
+    printf(".\n..\n");
+    show_dir(inode_id);
+
+
 }
 void work(){
     char cmd[1024];
@@ -220,7 +396,10 @@ void work(){
         if(strcmp("mkdir",cmd) == 0){
             is_mkdir(); 
             return ;
-             
+        }
+        else if(strcmp("ls",cmd) == 0){
+            is_ls();
+            return ; 
         }
     }
 }
@@ -228,6 +407,7 @@ void work(){
 int main(){
     init();
     work();
+    close_disk();
     exit(0);
 }
 // /home/dir1/dir2
