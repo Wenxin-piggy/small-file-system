@@ -172,31 +172,18 @@ int get_inode_num(char *name,int inode){
     */
     //要先将这个标号的Inode从磁盘中取出来
     //因为：每个磁盘块存了32个inode的信息
-    printf("get inode num\n");
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
     unsigned int inode_id = inode % 32 - 1;//因为是从0开始计算的
-    printf("inode_id_in_disk = %d\n",inode_id_in_disk);
     my_disk_read_block(inode_id_in_disk,buf);
-    
     struct inode * myinode = (struct inode *)buf;
-    printf("111inode test :inode size = %d\n",myinode[0].size);
-    printf("inode test :inode file_type = %d\n",myinode[0].file_type);
-    printf("inode test :inode link = %d\n",myinode[0].link);
-    for(int i = 0;i < 6;i ++){
-        printf("inode test : inode block_point[%d] = %d\n",i,myinode[0].block_point[i]);
-    }
-    printf("BLOCK_IN_NODE = %d",BLOCK_IN_INODE);
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
         if(myinode[inode_id].block_point[i] == 0){
             break;
         }
         int block_id_in_disk = myinode[inode_id].block_point[i] + DATA_BLOCK_BASE;
-        printf("may be is here\n");
         my_disk_read_block(block_id_in_disk,buf);
-        printf("may be is here\n");
         struct dir_item * block_list = (struct dir_item *)buf;
         unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
-        printf("block_num = %d\n",block_num);
         for(int j = 0;j < block_num;j ++){
             if(strcmp(name,block_list[j].name) == 0){
                 return block_list[j].inode_id;
@@ -210,6 +197,7 @@ void is_mkdir(){
     scanf("%s",&address_temp);
     printf("address repeat:%s\n",address_temp);
     int num = my_address_split(address_temp);
+    
     int t = get_inode_num("/",1);
 }
 void work(){
