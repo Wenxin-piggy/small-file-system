@@ -56,7 +56,7 @@ void my_disk_write_block(unsigned int block_num, char* buf){
     disk_write_block(block_num2,buf + 512);
     return;
 }
-void init_new_disk(){
+void init_new_disk(){//1
     char buf[1024];
     my_disk_read_block(0,buf);
     sp_block *sp_b = (sp_block*)buf;
@@ -154,7 +154,6 @@ int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
     }
     return -1;
 
-<<<<<<< HEAD
 }
 void show_dir(unsigned int inode){
     char buf[1024];
@@ -180,33 +179,6 @@ void show_dir(unsigned int inode){
     }
     return ;
 }
-=======
-}
-void show_dir(unsigned int inode){
-    char buf[1024];
-    unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
-    unsigned int inode_id = inode % 32;//因为是从0开始计算的
-    my_disk_read_block(inode_id_in_disk,buf);
-    struct inode * myinode = (struct inode *)buf;
-    for(int i = 0;i < BLOCK_IN_INODE;i ++){
-        if(myinode[inode_id].block_point[i] == 0){
-            return ;
-        }
-        else{
-            int block_id_in_disk = myinode[inode_id].block_point[i] + DATA_BLOCK_BASE - 1;
-            my_disk_read_block(block_id_in_disk,buf);
-            struct dir_item * block_list = (struct dir_item *)buf;
-            unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
-            for(int j = 0;j < block_num;j ++){
-                if(block_list[j].valid == 1){
-                    printf("%s\n",block_list[j].name);
-                }
-            }
-        }
-    }
-    return ;
-}
->>>>>>> f868efb2c9db5d51e43bdc08390d33c988bc376e
 void is_ls(){
     char address_cmd[1024];
     scanf("%s",&address_cmd);
@@ -269,15 +241,13 @@ void setmap(unsigned int id,int type){
         sp_b ->inode_map[id/32] |= (1 << (32 - id%32 - 1));
     }  
     my_disk_write_block(0,(char *)sp_b);
-<<<<<<< HEAD
 }
 void init_new_inode_block_for_use(unsigned int inode){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
     unsigned int inode_id = inode % 32;
     my_disk_read_block((inode_id + INODE_BLOCK_BASE),buf);
-    struct inode * myinode = (struct inode *)buf;
-    myinode[]
+
 
     //test end
     setmap(inode_id,2);
@@ -303,36 +273,6 @@ void add_dir_data_block(unsigned int id_datablock,unsigned int id_inode,int type
         }
     }
 }
-=======
-}
-void init_new_inode_block_for_use(unsigned int inode_id){
-    char buf[1024];
-    memset(buf,0,sizeof(buf));
-    my_disk_write_block((inode_id + INODE_BLOCK_BASE),buf);
-    setmap(inode_id,2);
-}
-void init_new_data_block_for_use(unsigned int block_id){
-    char buf[1024];
-    memset(buf,0,sizeof(buf));
-    my_disk_write_block((block_id + DATA_BLOCK_BASE),buf);
-    setmap(block_id,1);
-}
-void add_dir_data_block(unsigned int id_datablock,unsigned int id_inode,int type,char *name){
-    char buf[1024];
-    my_disk_read_block((id_datablock + DATA_BLOCK_BASE),buf);
-    struct dir_item * dir_list_block = (struct dir_item *)buf;
-    for(int i = 0;i < 8;i ++){
-        if(dir_list_block[i].valid == 0){
-            dir_list_block[i].inode_id = id_inode;
-            dir_list_block[i].valid = 1;
-            dir_list_block[i].type = type;
-            strcpy(dir_list_block[i].name,name);
-            my_disk_write_block((id_datablock + DATA_BLOCK_BASE),(char *)dir_list_block);
-            return ;
-        }
-    }
-}
->>>>>>> f868efb2c9db5d51e43bdc08390d33c988bc376e
 int find_place_for_dir(unsigned int id_block_pointed){
     char buf[1024];
     int id_block = id_block_pointed + DATA_BLOCK_BASE;//传进来的时候已经-1了
@@ -360,10 +300,6 @@ void add_dir(unsigned int inode, char *dir_name){
             init_new_data_block_for_use(new_block_id);   
             add_dir_data_block(new_block_id,new_dir_indoe_id,DIR_TYPE,dir_name);
             myinode[inode_id].block_point[i] = 1 + new_block_id ;
-<<<<<<< HEAD
-            myinode[inode_id].size += 1;
-=======
->>>>>>> f868efb2c9db5d51e43bdc08390d33c988bc376e
             my_disk_write_block(inode_id_in_disk,(char *)myinode);
             return;
         }
@@ -394,10 +330,7 @@ void is_mkdir(){
         }
     }
     //找到了他父亲的
-<<<<<<< HEAD
     printf("father's id = %d\n",inode_id);
-=======
->>>>>>> f868efb2c9db5d51e43bdc08390d33c988bc376e
     add_dir(inode_id,address_list[num-1]);
 }
 void work(){
