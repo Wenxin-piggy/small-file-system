@@ -56,7 +56,7 @@ void my_disk_write_block(unsigned int block_num, char* buf){
     disk_write_block(block_num2,buf + 512);
     return;
 }
-void init_new_disk(){
+void init_new_disk(){//1
     char buf[1024];
     my_disk_read_block(0,buf);
     sp_block *sp_b = (sp_block*)buf;
@@ -143,8 +143,9 @@ int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
             break;
         }
         int block_id_in_disk = myinode[id].block_point[i] + DATA_BLOCK_BASE - 1;//这个point的标记从1开始，0用来标记没有东西了
-        my_disk_read_block(block_id_in_disk,buf);
-        struct dir_item * block_list = (struct dir_item *)buf;
+        char buf2[1024];
+        my_disk_read_block(block_id_in_disk,buf2);
+        struct dir_item * block_list = (struct dir_item *)buf2;
         unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
         for(int j = 0;i < block_num;j ++){
             if((block_list[j].valid == 1)&&(strcmp(dir_name,block_list[j].name) == 0)){
@@ -167,8 +168,9 @@ void show_dir(unsigned int inode){
         }
         else{
             int block_id_in_disk = myinode[inode_id].block_point[i] + DATA_BLOCK_BASE - 1;
-            my_disk_read_block(block_id_in_disk,buf);
-            struct dir_item * block_list = (struct dir_item *)buf;
+            char buf2[1024];
+            my_disk_read_block(block_id_in_disk,buf2);
+            struct dir_item * block_list = (struct dir_item *)buf2;
             unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
             for(int j = 0;j < block_num;j ++){
                 if(block_list[j].valid == 1){
@@ -242,11 +244,22 @@ void setmap(unsigned int id,int type){
     }  
     my_disk_write_block(0,(char *)sp_b);
 }
-void init_new_inode_block_for_use(unsigned int inode_id){
+void init_new_inode_block_for_use(unsigned int inode,int type){
     char buf[1024];
-    memset(buf,0,sizeof(buf));
-    my_disk_write_block((inode_id + INODE_BLOCK_BASE),buf);
-    setmap(inode_id,2);
+    unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
+    unsigned int inode_id = inode % 32;
+
+    my_disk_read_block(inode_id_in_disk,buf);
+    struct inode * inode_list = (struct inode *)buf;
+    inode_list[inode_id].size = 0;
+    inode_list[inode_id].file_type = type;
+    inode_list[inode_id].link = 1;
+    for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        inode_list[inode_id].block_point[i] = 0;
+    }
+    my_disk_write_block(inode_id_in_disk,(char *)inode_list);
+   
+    setmap(inode,2);
 }
 void init_new_data_block_for_use(unsigned int block_id){
     char buf[1024];
@@ -284,12 +297,14 @@ int find_place_for_dir(unsigned int id_block_pointed){
 void add_dir(unsigned int inode, char *dir_name){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
+    // unsigned int inode_id_in_disk = 1;
     unsigned int inode_id = inode % 32;
-    my_disk_read_block(inode_id_in_disk,buf);
+    
     struct inode * myinode = (struct inode *)buf;
-
     unsigned int new_dir_indoe_id = get_new_block_id(32);//得到新的inode
-    init_new_inode_block_for_use(new_dir_indoe_id);
+    init_new_inode_block_for_use(new_dir_indoe_id,DIR_TYPE);
+    my_disk_read_block(inode_id_in_disk,buf);
+
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
         if(myinode[inode_id].block_point[i] == 0){
             unsigned int new_block_id = get_new_block_id(128);
@@ -315,6 +330,11 @@ void is_mkdir(){
     char address_temp[1024];
     scanf("%s",&address_temp);
     int num = my_address_split(address_temp);
+    
+    char buf[1024];
+    my_disk_read_block(1,buf);
+    struct inode * test = (struct inode *)buf;
+
     unsigned int inode_id = 0;//默认第1个inode是根目录
     for(int i = 1;i < num - 1;i ++){
         //默认第一个是/，然后从第二个开始遍历,而且最后一个是要创建的，所以不用遍历
