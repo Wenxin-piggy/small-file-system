@@ -16,6 +16,7 @@
 #define DATA_BLOCK_BASE 33
 
 char address_list[ADDRESS_SIZE][128];
+int address_num;
 
 typedef struct super_block {
     int32_t magic_num;                  // 幻数
@@ -136,6 +137,7 @@ int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
     char buf[1024];
     unsigned int in_disk = inode_id/32 + INODE_BLOCK_BASE;
     my_disk_read_block(in_disk,buf);
+    
     struct inode * myinode = (struct inode *)buf;
     unsigned int id = inode_id % 32;//因为是从0开始计算的
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
@@ -143,13 +145,20 @@ int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
             break;
         }
         int block_id_in_disk = myinode[id].block_point[i] + DATA_BLOCK_BASE - 1;//这个point的标记从1开始，0用来标记没有东西了
+
         char buf2[1024];
         my_disk_read_block(block_id_in_disk,buf2);
         struct dir_item * block_list = (struct dir_item *)buf2;
         unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
-        for(int j = 0;i < block_num;j ++){
+        for(int j = 0;j < block_num;j ++){
             if((block_list[j].valid == 1)&&(strcmp(dir_name,block_list[j].name) == 0)){
-                return block_list[j].inode_id;
+                if(block_list[j].type == DIR_TYPE){
+                    return block_list[j].inode_id;
+                }
+                else if(block_list[j].type == FILE_TYPE){
+                    printf("father is a file\n");
+                    return -2;
+                }
             }
         }
     }
@@ -193,6 +202,10 @@ void is_ls(){
         if(inode_id == -1){
             printf("No such file or dictionary\n",address_cmd);
             return;
+        }
+        else if(inode_id == -2){
+            printf("ls error\n");
+            return ;
         }
     }
     printf(".\n..\n");
@@ -297,7 +310,6 @@ int find_place_for_dir(unsigned int id_block_pointed){
 void add_dir(unsigned int inode, char *dir_name){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
-    // unsigned int inode_id_in_disk = 1;
     unsigned int inode_id = inode % 32;
     
     struct inode * myinode = (struct inode *)buf;
@@ -326,43 +338,50 @@ void add_dir(unsigned int inode, char *dir_name){
     }
     printf("Can not create:No space\n");
 }
-int get_faters_inode(int *num){
-    char address_temp[1024];
-    scanf("%s",&address_temp);
-    *num = my_address_split(address_temp);
-
-    unsigned int inode_id = 0;//默认第1个inode是根目录
-    for(int i = 1;i < *num - 1;i ++){
-        //默认第一个是/，然后从第二个开始遍历,而且最后一个是要创建的，所以不用遍历
-        inode_id = get_inodeid_by_name(address_list[i],inode_id);
-        if(inode_id == -1){
-            //该找到的inode_id 没有找到
-            printf("Can not create %s:No such file or dictionary\n",address_temp);
-            return -1;
-        }
-    }
-    return inode_id;
-}
-
-void is_mkdir(){
-    int num = 0;
-    unsigned int inode_id = get_faters_inode(&num);
-    if(inode_id == -1)  return;
-    //找到了他父亲的
-    if(get_inodeid_by_name(address_list[num-1],inode_id) != -1){
-        printf("Can not create:Already have dir/file have the same name\n");
-        return ;
-    }
-    add_dir(inode_id,address_list[num-1]);
-}
-
-void is_touch(){
+int get_father_inode(){
     char address_temp[1024];
     scanf("%s",&address_temp);
     int num = my_address_split(address_temp);
+    
+    char buf[1024];
+    my_disk_read_block(1,buf);
+    struct inode * test = (struct inode *)buf;
 
+    unsigned int inode_id = 0;//默认第1个inode是根目录
+    for(int i = 1;i < num - 1;i ++){
+        inode_id = get_inodeid_by_name(address_list[i],inode_id);
+        if(inode_id == -1){
+            printf("Can not create %s:No such file or dictionary\n",address_temp);
+            return -1;
+        }
+        else if(inode_id == -2){
+            printf("Can not create:may be something error before\n");
+            return -1;
+        }
+    }
+    if(get_inodeid_by_name(address_list[num-1],inode_id) != -1){
+        printf("Can not create:Already have this file/dir\n");
+        return -1;
+    }
+    address_num = num;
+    return inode_id;
+}
+void is_mkdir(){
+    int inode_id = get_father_inode();
+    if(inode_id < 0){
+        return;
+    }
+    add_dir((unsigned int )inode_id,address_list[address_num-1]);
+}
+void add_file(unsigned int inode,char *f_name){
 
-    printf("test is touch\n");
+}
+void is_touch(){
+    int inode_id = get_father_inode();
+    if(inode_id < 0){
+        return;
+    }
+    add_file((unsigned int )inode_id,address_list[address_num-1]);
 }
 void work(){
     char cmd[1024];
