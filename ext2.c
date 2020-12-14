@@ -156,7 +156,6 @@ int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
                     return block_list[j].inode_id;
                 }
                 else if(block_list[j].type == FILE_TYPE){
-                    printf("father is a file\n");
                     return -2;
                 }
             }
@@ -307,21 +306,19 @@ int find_place_for_dir(unsigned int id_block_pointed){
     }
     return -1;
 }
-void add_dir(unsigned int inode, char *dir_name){
+void add(unsigned int inode,char *dir_name,int type){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
     unsigned int inode_id = inode % 32;
-    
     struct inode * myinode = (struct inode *)buf;
     unsigned int new_dir_indoe_id = get_new_block_id(32);//得到新的inode
-    init_new_inode_block_for_use(new_dir_indoe_id,DIR_TYPE);
+    init_new_inode_block_for_use(new_dir_indoe_id,type);
     my_disk_read_block(inode_id_in_disk,buf);
-
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
         if(myinode[inode_id].block_point[i] == 0){
             unsigned int new_block_id = get_new_block_id(128);
             init_new_data_block_for_use(new_block_id);   
-            add_dir_data_block(new_block_id,new_dir_indoe_id,DIR_TYPE,dir_name);
+            add_dir_data_block(new_block_id,new_dir_indoe_id,type,dir_name);
             myinode[inode_id].block_point[i] = 1 + new_block_id ;
             my_disk_write_block(inode_id_in_disk,(char *)myinode);
             return;
@@ -330,13 +327,17 @@ void add_dir(unsigned int inode, char *dir_name){
             int id_data_blokc = myinode[inode_id].block_point[i] - 1;
             int pos = find_place_for_dir(id_data_blokc);
             if(pos >= 0){
-                add_dir_data_block(id_data_blokc,new_dir_indoe_id,DIR_TYPE,dir_name);
+                add_dir_data_block(id_data_blokc,new_dir_indoe_id,type,dir_name);
                 my_disk_write_block(inode_id_in_disk,(char *)myinode);
                 return;
             }
         }
     }
-    printf("Can not create:No space\n");
+     printf("Can not create:No space\n");
+
+}
+void add_dir(unsigned int inode, char *dir_name){
+    add(inode,dir_name,DIR_TYPE);
 }
 int get_father_inode(){
     char address_temp[1024];
@@ -355,12 +356,12 @@ int get_father_inode(){
             return -1;
         }
         else if(inode_id == -2){
-            printf("Can not create:may be something error before\n");
+            printf("Can not create %s:No father dictionary\n");
             return -1;
         }
     }
     if(get_inodeid_by_name(address_list[num-1],inode_id) != -1){
-        printf("Can not create:Already have this file/dir\n");
+        printf("Can not create:Already have the same name file/dir\n");
         return -1;
     }
     address_num = num;
@@ -374,7 +375,7 @@ void is_mkdir(){
     add_dir((unsigned int )inode_id,address_list[address_num-1]);
 }
 void add_file(unsigned int inode,char *f_name){
-
+     add(inode,f_name,FILE_TYPE);
 }
 void is_touch(){
     int inode_id = get_father_inode();
