@@ -60,7 +60,6 @@ void init_new_disk(){//1
     char buf[1024];
     my_disk_read_block(0,buf);
     sp_block *sp_b = (sp_block*)buf;
-    printf("TEST INIT NEW DISK\n");
     //先初始化超级块
     sp_b -> magic_num = MAGIC_NUM;
     sp_b -> free_block_count = 4096;
@@ -127,6 +126,7 @@ int my_address_split(char * address_cmd){
         }
     }
     if(length > 1){
+        address_list[num][temp ++] = 0;
         num ++;
     }
     return num;
@@ -348,6 +348,9 @@ void is_mkdir(){
     //找到了他父亲的
     add_dir(inode_id,address_list[num-1]);
 }
+void is_touch(){
+    printf("test is touch\n");
+}
 void work(){
     char cmd[1024];
     printf("==> ");
@@ -358,6 +361,9 @@ void work(){
         }
         else if(strcmp("ls",cmd) == 0){
             is_ls();
+        }
+        else if (strcmp("touch",cmd) == 0){
+            is_touch();
         }
         printf("==> ");
         scanf("%s",&cmd);
