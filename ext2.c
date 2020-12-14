@@ -16,7 +16,10 @@
 #define DATA_BLOCK_BASE 33
 
 char address_list[ADDRESS_SIZE][128];
+char name_f[1024];
+char name_t[1024];
 int address_num;
+unsigned int f_id;
 
 typedef struct super_block {
     int32_t magic_num;                  // 幻数
@@ -306,7 +309,7 @@ int find_place_for_dir(unsigned int id_block_pointed){
     }
     return -1;
 }
-void add(unsigned int inode,char *dir_name,int type){
+int add(unsigned int inode,char *dir_name,int type){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
     unsigned int inode_id = inode % 32;
@@ -321,7 +324,7 @@ void add(unsigned int inode,char *dir_name,int type){
             add_dir_data_block(new_block_id,new_dir_indoe_id,type,dir_name);
             myinode[inode_id].block_point[i] = 1 + new_block_id ;
             my_disk_write_block(inode_id_in_disk,(char *)myinode);
-            return;
+            return new_dir_indoe_id;
         }
         else{
             int id_data_blokc = myinode[inode_id].block_point[i] - 1;
@@ -329,11 +332,12 @@ void add(unsigned int inode,char *dir_name,int type){
             if(pos >= 0){
                 add_dir_data_block(id_data_blokc,new_dir_indoe_id,type,dir_name);
                 my_disk_write_block(inode_id_in_disk,(char *)myinode);
-                return;
+                return new_dir_indoe_id;
             }
         }
     }
      printf("Can not create:No space\n");
+     return -1;
 
 }
 void add_dir(unsigned int inode, char *dir_name){
@@ -343,10 +347,6 @@ int get_father_inode(){
     char address_temp[1024];
     scanf("%s",&address_temp);
     int num = my_address_split(address_temp);
-    
-    char buf[1024];
-    my_disk_read_block(1,buf);
-    struct inode * test = (struct inode *)buf;
 
     unsigned int inode_id = 0;//默认第1个inode是根目录
     for(int i = 1;i < num - 1;i ++){
@@ -384,6 +384,119 @@ void is_touch(){
     }
     add_file((unsigned int )inode_id,address_list[address_num-1]);
 }
+int get_my_inode_id(char * dir_name,unsigned int inode_id){
+     //利用Inode_id找到Inode块
+    char buf[1024];
+    unsigned int in_disk = inode_id/32 + INODE_BLOCK_BASE;
+    my_disk_read_block(in_disk,buf);
+    struct inode * myinode = (struct inode *)buf;
+    unsigned int id = inode_id % 32;//因为是从0开始计算的
+    for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        if(myinode[id].block_point[i] == 0){
+            break;
+        }
+        int block_id_in_disk = myinode[id].block_point[i] + DATA_BLOCK_BASE - 1;//这个point的标记从1开始，0用来标记没有东西了
+
+        char buf2[1024];
+        my_disk_read_block(block_id_in_disk,buf2);
+        struct dir_item * block_list = (struct dir_item *)buf2;
+        unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
+        for(int j = 0;j < block_num;j ++){
+            if((block_list[j].valid == 1)&&(strcmp(dir_name,block_list[j].name) == 0)){
+                if(block_list[j].type == FILE_TYPE){
+                    return block_list[j].inode_id;
+                }
+            }
+        }
+    }
+    return -1;
+}
+int find_my_id(char *addr ,int type){
+    int addr_num = my_address_split(addr);
+    if(type == 1)   strcpy(name_f,address_list[addr_num - 1]);
+    else if(type == 2)  strcpy(name_t,address_list[addr_num - 1]);
+    unsigned int inode_id = 0;//从根目录开始找起
+    for(int i = 1;i < addr_num - 1;i ++){
+        inode_id = get_inodeid_by_name(address_list[i],inode_id);//穿父亲的id进去，找到孩子的id
+        if(inode_id == -1){
+            printf("No such file or dictionary\n",addr);
+            return -2;
+        }
+        else if(inode_id == -2){
+            printf("No dir :%s\n",address_list[i]);
+            return -2;
+        }
+    }
+    if(type == 2){
+        f_id = inode_id;
+    }
+    inode_id = get_my_inode_id(address_list[addr_num - 1],inode_id);
+    if(inode_id == -1){
+         printf("No file existed:%s.",address_list[addr_num - 1]);
+         return -1;
+    }
+    return inode_id;
+}
+void copy(unsigned int f_id,unsigned int t_id){
+    char buf1[1024];
+    unsigned int f_id_in_disk = f_id/32 + INODE_BLOCK_BASE;
+    unsigned int f_inode_id = f_id % 32;
+
+    my_disk_read_block(f_id_in_disk,buf1);
+    struct inode * f_inode = (struct inode *)buf1;
+    
+    char buf2[1024];
+    unsigned int t_id_in_disk = t_id/32 + INODE_BLOCK_BASE;
+    unsigned int t_inode_id = t_id % 32;
+    my_disk_read_block(t_id_in_disk,buf2);
+    struct inode * t_inode = (struct inode *)buf2;
+
+    t_inode[t_inode_id].size = f_inode[f_inode_id].size;
+    t_inode[t_inode_id].file_type = f_inode[f_inode_id].file_type;
+    t_inode[t_inode_id].link = f_inode[f_inode_id].link;
+    for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        t_inode[t_inode_id].block_point[i] = 0;
+    }
+    for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        if(f_inode[f_inode_id].block_point[i] == 0){
+            break;
+        }
+        unsigned int new_block_id = get_new_block_id(128);
+        init_new_data_block_for_use(new_block_id); 
+        char buf3[1024];
+        my_disk_read_block(f_inode[f_inode_id].block_point[i] - 1 + DATA_BLOCK_BASE,buf3);
+        my_disk_write_block(new_block_id + DATA_BLOCK_BASE,buf3);
+        t_inode[t_inode_id].block_point[i] = new_block_id + 1;
+         
+    }
+    return ;
+}
+void is_cp(){
+    char addr_f[1024];//源文件名
+    char addr_t[1024];
+    scanf("%s",&addr_f);
+    scanf("%s",&addr_t);
+    // //先找到该源头的Indoe id
+    int addr_f_id = find_my_id(addr_f,1);
+    if(addr_f_id < 0) return ;
+    // //再找找目的
+    int addr_t_id = find_my_id(addr_t,2);
+    if(addr_f_id == -2) return ;
+    else if(addr_t_id == -1){
+        //目的没有所要求的文件
+        //先在父目录上创一个新文件
+        printf("Will make file named %s\n",name_t);
+        addr_t_id = add((unsigned int) f_id,name_t,FILE_TYPE);
+        if(addr_t_id == -1) return;
+        copy((unsigned int) addr_f_id,(unsigned int )addr_t_id);
+
+    }
+    else{
+        printf("Already have file : %s,and it will be fugai\n",addr_t);
+        copy((unsigned int)addr_f_id,(unsigned int )addr_t_id);
+    }
+
+}
 void work(){
     char cmd[1024];
     printf("==> ");
@@ -397,6 +510,9 @@ void work(){
         }
         else if (strcmp("touch",cmd) == 0){
             is_touch();
+        }
+        else if(strcmp("cp",cmd) == 0){
+            is_cp();
         }
         printf("==> ");
         scanf("%s",&cmd);
