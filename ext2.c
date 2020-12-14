@@ -326,29 +326,42 @@ void add_dir(unsigned int inode, char *dir_name){
     }
     printf("Can not create:No space\n");
 }
-void is_mkdir(){
+int get_faters_inode(int *num){
     char address_temp[1024];
     scanf("%s",&address_temp);
-    int num = my_address_split(address_temp);
-    
-    char buf[1024];
-    my_disk_read_block(1,buf);
-    struct inode * test = (struct inode *)buf;
+    *num = my_address_split(address_temp);
 
     unsigned int inode_id = 0;//默认第1个inode是根目录
-    for(int i = 1;i < num - 1;i ++){
+    for(int i = 1;i < *num - 1;i ++){
         //默认第一个是/，然后从第二个开始遍历,而且最后一个是要创建的，所以不用遍历
         inode_id = get_inodeid_by_name(address_list[i],inode_id);
         if(inode_id == -1){
             //该找到的inode_id 没有找到
             printf("Can not create %s:No such file or dictionary\n",address_temp);
-            return;
+            return -1;
         }
     }
+    return inode_id;
+}
+
+void is_mkdir(){
+    int num = 0;
+    unsigned int inode_id = get_faters_inode(&num);
+    if(inode_id == -1)  return;
     //找到了他父亲的
+    if(get_inodeid_by_name(address_list[num-1],inode_id) != -1){
+        printf("Can not create:Already have dir/file have the same name\n");
+        return ;
+    }
     add_dir(inode_id,address_list[num-1]);
 }
+
 void is_touch(){
+    char address_temp[1024];
+    scanf("%s",&address_temp);
+    int num = my_address_split(address_temp);
+
+
     printf("test is touch\n");
 }
 void work(){
