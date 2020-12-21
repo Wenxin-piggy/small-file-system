@@ -46,6 +46,7 @@ struct dir_item { //其长度为128B,则一个Block中有8块
 void finished(){
     close_disk();
 }
+//重写了disk_read_block，使得buf大小为1024，满足设计要求
 void my_disk_read_block(unsigned int block_num, char* buf){
     unsigned int block_num1 = 2*block_num;
     unsigned int block_num2 = block_num1 + 1;
@@ -53,6 +54,7 @@ void my_disk_read_block(unsigned int block_num, char* buf){
     disk_read_block(block_num2,buf+512);
     return;
 }
+//重写了disk_write_block，使得buf大小为1024，满足设计要求
 void my_disk_write_block(unsigned int block_num, char* buf){
     unsigned int block_num1 = 2*block_num;
     unsigned int block_num2 = block_num1 + 1;
@@ -60,7 +62,8 @@ void my_disk_write_block(unsigned int block_num, char* buf){
     disk_write_block(block_num2,buf + 512);
     return;
 }
-void init_new_disk(){//1
+//当选择重新建立file systems时，重新初始化相应磁盘块
+void init_new_disk(){
     char buf[1024];
     my_disk_read_block(0,buf);
     sp_block *sp_b = (sp_block*)buf;
@@ -95,6 +98,7 @@ int init_cmd(){
     }
     return 0;
 }
+//重新建立file systems
 void init(){
     open_disk();
     char buf[1024];
@@ -114,6 +118,7 @@ void init(){
     }
     printf("Init finished,good luck and have fun!\n");
 }
+//将cmd中输入的地址分解
 int my_address_split(char * address_cmd){
     int length = strlen(address_cmd);
     strcpy(address_list[0],"/");
@@ -135,6 +140,7 @@ int my_address_split(char * address_cmd){
     }
     return num;
 }
+//通过名字返回inode id
 int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
     //利用Inode_id找到Inode块
     char buf[1024];
@@ -167,6 +173,7 @@ int get_inodeid_by_name(char * dir_name,unsigned int inode_id){
     return -1;
 
 }
+//展示文件夹A（inode id = inode)下的文件/文件夹
 void show_dir(unsigned int inode){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
@@ -174,32 +181,39 @@ void show_dir(unsigned int inode){
     my_disk_read_block(inode_id_in_disk,buf);
     struct inode * myinode = (struct inode *)buf;
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        //可读出block_point所存储的磁盘地址
         if(myinode[inode_id].block_point[i] == 0){
             return ;
         }
         else{
+            //根据磁盘地址，读出磁盘内容
             int block_id_in_disk = myinode[inode_id].block_point[i] + DATA_BLOCK_BASE - 1;
             char buf2[1024];
             my_disk_read_block(block_id_in_disk,buf2);
             struct dir_item * block_list = (struct dir_item *)buf2;
             unsigned int block_num = BLOCK_SIZE / sizeof(struct dir_item);
             for(int j = 0;j < block_num;j ++){
+                //可得文件夹A目录下的文件/文件夹的valid
                 if(block_list[j].valid == 1){
-                    printf("%s\n",block_list[j].name);
+                    //valid = 1，表示有效，将其打印
+                    printf("%s\t",block_list[j].name);
+                    if(block_list[j].type == DIR_TYPE)  printf("DIR\t\n");
+                    else if(block_list[j].type == FILE_TYPE)    printf("FILE\t\n");
                 }
             }
         }
     }
     return ;
 }
+//命令为:ls
 void is_ls(){
     char address_cmd[1024];
     scanf("%s",&address_cmd);
     memset(address_list,0,sizeof(address_list));
     int num = my_address_split(address_cmd);
+    //找到要展示的文件夹A的inode id
     unsigned int inode_id = 0;//从根目录开始找起
     for(int i = 1;i < num;i ++){
-        //  printf("before get inode id:%s\n",address_list[i]);
         inode_id = get_inodeid_by_name(address_list[i],inode_id);//穿父亲的id进去，找到孩子的id
         if(inode_id == -1){
             printf("No such file or dictionary\n",address_cmd);
@@ -213,7 +227,7 @@ void is_ls(){
     printf(".\n..\n");
     show_dir(inode_id);
 }
-
+//根据超级块找一个可以用的磁盘块或者Inode块
 int get_invaild_position(unsigned int num,int base){
     int t = 0;
     for(uint32_t mask = 0x80000000;mask;mask = mask >> 1){
@@ -224,6 +238,7 @@ int get_invaild_position(unsigned int num,int base){
     }
     return -1;
 }
+//返回一个新的block的id
 unsigned int get_new_block_id(int size){
     char buf[1024];
     unsigned int ans = 0;
@@ -242,6 +257,7 @@ unsigned int get_new_block_id(int size){
     }
     return -1;
 }
+//分配了新的data_block或者inode_block后更新超级快的内容
 void setmap(unsigned int id,int type){
     char buf[1024];
     my_disk_read_block(0,buf);
@@ -259,6 +275,7 @@ void setmap(unsigned int id,int type){
     }  
     my_disk_write_block(0,(char *)sp_b);
 }
+//初始化新的inode_block
 void init_new_inode_block_for_use(unsigned int inode,int type){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
@@ -276,12 +293,14 @@ void init_new_inode_block_for_use(unsigned int inode,int type){
    
     setmap(inode,2);
 }
+//初始化新的data_block
 void init_new_data_block_for_use(unsigned int block_id){
     char buf[1024];
     memset(buf,0,sizeof(buf));
     my_disk_write_block((block_id + DATA_BLOCK_BASE),buf);
     setmap(block_id,1);
 }
+//在data_block的索引块中加入文件夹
 void add_dir_data_block(unsigned int id_datablock,unsigned int id_inode,int type,char *name){
     char buf[1024];
     my_disk_read_block((id_datablock + DATA_BLOCK_BASE),buf);
@@ -297,6 +316,7 @@ void add_dir_data_block(unsigned int id_datablock,unsigned int id_inode,int type
         }
     }
 }
+//为插入文件夹找一个地儿
 int find_place_for_dir(unsigned int id_block_pointed){
     char buf[1024];
     int id_block = id_block_pointed + DATA_BLOCK_BASE;//传进来的时候已经-1了
@@ -309,15 +329,18 @@ int find_place_for_dir(unsigned int id_block_pointed){
     }
     return -1;
 }
+//在data_block的索引块中加入文件夹
 int add(unsigned int inode,char *dir_name,int type){
     char buf[1024];
     unsigned int inode_id_in_disk = inode/32 + INODE_BLOCK_BASE;
     unsigned int inode_id = inode % 32;
     struct inode * myinode = (struct inode *)buf;
     unsigned int new_dir_indoe_id = get_new_block_id(32);//得到新的inode
+    //初始化一个inode块，得到其inode_id备用
     init_new_inode_block_for_use(new_dir_indoe_id,type);
     my_disk_read_block(inode_id_in_disk,buf);
     for(int i = 0;i < BLOCK_IN_INODE;i ++){
+        //在父目录inode块的的block_point中找一个有位置的磁盘块，将新的信息加入其磁盘块存的索引块中
         if(myinode[inode_id].block_point[i] == 0){
             unsigned int new_block_id = get_new_block_id(128);
             init_new_data_block_for_use(new_block_id);   
@@ -340,9 +363,11 @@ int add(unsigned int inode,char *dir_name,int type){
      return -1;
 
 }
+//在data_block的索引块中加入文件夹
 void add_dir(unsigned int inode, char *dir_name){
     add(inode,dir_name,DIR_TYPE);
 }
+//得到inode 
 int get_father_inode(){
     char address_temp[1024];
     scanf("%s",&address_temp);
@@ -368,12 +393,14 @@ int get_father_inode(){
     return inode_id;
 }
 void is_mkdir(){
+    //得到所需要创建的文件夹A的父目录的inode id
     int inode_id = get_father_inode();
     if(inode_id < 0){
         return;
     }
     add_dir((unsigned int )inode_id,address_list[address_num-1]);
 }
+//在data_block的索引块中加入文件夹
 void add_file(unsigned int inode,char *f_name){
      add(inode,f_name,FILE_TYPE);
 }
@@ -384,6 +411,7 @@ void is_touch(){
     }
     add_file((unsigned int )inode_id,address_list[address_num-1]);
 }
+//得到inode id
 int get_my_inode_id(char * dir_name,unsigned int inode_id){
      //利用Inode_id找到Inode块
     char buf[1024];
@@ -411,6 +439,7 @@ int get_my_inode_id(char * dir_name,unsigned int inode_id){
     }
     return -1;
 }
+//得到inode id
 int find_my_id(char *addr ,int type){
     int addr_num = my_address_split(addr);
     if(type == 1)   strcpy(name_f,address_list[addr_num - 1]);
@@ -423,7 +452,6 @@ int find_my_id(char *addr ,int type){
             return -2;
         }
         else if(inode_id == -2){
-            printf("No dir :%s\n",address_list[i]);
             return -2;
         }
     }
@@ -432,7 +460,7 @@ int find_my_id(char *addr ,int type){
     }
     inode_id = get_my_inode_id(address_list[addr_num - 1],inode_id);
     if(inode_id == -1){
-         printf("No file existed:%s.",address_list[addr_num - 1]);
+         printf("No file existed:%s.\n",address_list[addr_num - 1]);
          return -1;
     }
     return inode_id;
@@ -479,12 +507,12 @@ void is_cp(){
     // //先找到该源头的Indoe id
     int addr_f_id = find_my_id(addr_f,1);
     if(addr_f_id < 0) return ;
-    // //再找找目的
+    // 再找找目的文件夹的inode id
     int addr_t_id = find_my_id(addr_t,2);
     if(addr_f_id == -2) return ;
     else if(addr_t_id == -1){
         //目的没有所要求的文件
-        //先在父目录上创一个新文件
+        //先在父目录上创一个新文件，然后再将内容导入
         printf("Will make file named %s\n",name_t);
         addr_t_id = add((unsigned int) f_id,name_t,FILE_TYPE);
         if(addr_t_id == -1) return;
@@ -492,6 +520,7 @@ void is_cp(){
 
     }
     else{
+        //有所要求的文件，直接将内容覆盖
         printf("Already have file : %s,and it will be fugai\n",addr_t);
         copy((unsigned int)addr_f_id,(unsigned int )addr_t_id);
     }
